@@ -1,3 +1,9 @@
+/**
+ * Endpoint POST para autenticación de usuarios.
+ * Valida la existencia de credenciales (email/password), ejecuta la verificación 
+ * contra la base de datos y retorna la sesión activa o un error 401.
+ */
+
 import type { NextRequest } from "next/server"
 import { login } from "@/lib/auth/session"
 import { json, error } from "@/lib/api/respond"

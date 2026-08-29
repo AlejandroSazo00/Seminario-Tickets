@@ -1,3 +1,9 @@
+/**
+ * Endpoint POST para el registro de nuevos usuarios.
+ * Valida la presencia de datos obligatorios (nombre, email y contraseña), 
+ * procesa la creación de la cuenta en la base de datos y retorna el usuario creado con un estado 201 o un conflicto 409.
+ */
+
 import type { NextRequest } from "next/server"
 import { register } from "@/lib/auth/session"
 import { json, error } from "@/lib/api/respond"
