@@ -3,13 +3,20 @@ import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 
+// Carga de la fuente tipográfica primaria definida en el Sistema de Diseño (Inter)
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
+/**
+ * METADATOS GLOBALES (Branding, SEO y Accesibilidad)
+ * Define el título de la plataforma, descripción descriptiva e íconos adaptativos.
+ */
 export const metadata: Metadata = {
   title: 'MesaViva · Sistema de tickets de soporte',
   description:
     'Centraliza incidencias de todos los canales: crea, prioriza, asigna y da seguimiento a tickets de soporte con reportes en tiempo real.',
   generator: 'v0.app',
+  
+  // Branding UI: Favicons dinámicos según la preferencia de tema (Light / Dark) del dispositivo
   icons: {
     icon: [
       {
@@ -29,6 +36,10 @@ export const metadata: Metadata = {
   },
 }
 
+/**
+ * CONFIGURACIÓN DE VIEWPORT Y TEMA NATIVO
+ * Controla el esquema de color nativo del navegador para que coincida con el tema de la UI.
+ */
 export const viewport: Viewport = {
   colorScheme: 'light dark',
   themeColor: [
@@ -37,6 +48,10 @@ export const viewport: Viewport = {
   ],
 }
 
+/**
+ * LAYOUT RAÍZ
+ * Estructura contenedora global que aplica la tipografía 'Inter' y el fondo base de la UI.
+ */
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -45,7 +60,10 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${inter.variable} bg-background`}>
       <body className="font-sans antialiased">
+        {/* Renderizado de las vistas (Login, Dashboard, etc.) */}
         {children}
+        
+        {/* Métricas de rendimiento y uso de UI en producción */}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
