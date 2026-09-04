@@ -6,6 +6,9 @@ import { LayoutDashboard, Ticket, PlusCircle, BarChart3, BookOpen, Users } from 
 import { cn } from "@/lib/utils"
 import type { Role } from "@/lib/types"
 
+/**
+ * Estructura de navegación principal con filtrado explícito por roles (RBAC).
+ */
 const NAV = [
   { href: "/panel", label: "Resumen", icon: LayoutDashboard, roles: ["cliente", "agente", "admin"] as Role[] },
   { href: "/panel/tickets", label: "Tickets", icon: Ticket, roles: ["cliente", "agente", "admin"] as Role[] },
@@ -15,15 +18,37 @@ const NAV = [
   { href: "/panel/documentacion", label: "Docs", icon: BookOpen, roles: ["cliente", "agente", "admin"] as Role[] },
 ]
 
-export function MobileNav({ role }: { role: Role }) {
+/**
+ * Propiedades esperadas por el componente MobileNav.
+ */
+interface MobileNavProps {
+  /** Rol del usuario autenticado para la discriminación de permisos en la UI */
+  role: Role
+}
+
+/**
+ * BARRA DE NAVEGACIÓN MÓVIL (UI Client Component)
+ * 
+ * - Renderiza una barra fija en el borde inferior (`fixed bottom-0`) visible solo en vistas móviles (`md:hidden`).
+ * - Aplica filtrado dinámico de rutas basado en la matriz de permisos por rol (`RBAC`).
+ * - Resalta la ruta activa comparando `pathname` y maneja subrutas anidadas.
+ * 
+ * @param {MobileNavProps} props - Propiedades del componente.
+ * @returns {JSX.Element} Navegación móvil condicional renderizada.
+ */
+export function MobileNav({ role }: MobileNavProps) {
   const pathname = usePathname()
+  
+  // Filtrado de accesos permitidos según el rol del usuario en sesión
   const items = NAV.filter((i) => i.roles.includes(role))
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-card/95 backdrop-blur md:hidden">
       {items.map((item) => {
+        // Detección de ruta activa considerando rutas principales y subrutas
         const active = pathname === item.href || (item.href !== "/panel" && pathname.startsWith(item.href))
         const Icon = item.icon
+        
         return (
           <Link
             key={item.href}
