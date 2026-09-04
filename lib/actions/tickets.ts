@@ -1,4 +1,7 @@
 "use server"
+/** Server Action: se ejecuta únicamente en el servidor (backend), 
+ *  nunca en el cliente.
+ */
 
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
@@ -12,8 +15,16 @@ import {
 } from "@/lib/services/tickets"
 import type { Channel, Priority, Status } from "@/lib/types"
 
+
+/** Tipo de retorno de las acciones de formulario: error de validación,
+ *  bandera de éxito (ok), o undefined si hubo redirect.
+ */
 export type FormState = { error?: string; ok?: boolean } | undefined
 
+
+/**
+ * Crea un nuevo ticket a partir de los datos del formulario.
+ */
 export async function createTicketAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const user = await requireUser()
   const title = String(formData.get("title") ?? "").trim()
@@ -28,19 +39,27 @@ export async function createTicketAction(_prev: FormState, formData: FormData): 
   }
 
   const ticket = await createTicket(user, { title, description, category, channel, priority, requesterId })
-  revalidatePath("/panel/tickets")
+  revalidatePath("/panel/tickets") // fuerza a Next.js a refrescar el caché de estas rutas
   revalidatePath("/panel")
-  redirect(`/panel/tickets/${ticket.code}`)
+  redirect(`/panel/tickets/${ticket.code}`) // redirige al detalle del ticket recién creado
 }
 
+
+/**
+ * Actualiza el estado (status) de un ticket existente.
+ */
 export async function updateStatusAction(id: string, status: Status, note?: string): Promise<void> {
   const user = await requireUser()
-  await updateStatus(user, id, status, note)
-  revalidatePath(`/panel/tickets/${id}`)
-  revalidatePath("/panel/tickets")
-  revalidatePath("/panel")
+  await updateStatus(user, id, status, note) // delega el cambio de estado al servicio
+  revalidatePath(`/panel/tickets/${id}`) // refresca el detalle del ticket
+  revalidatePath("/panel/tickets") // refresca el listado
+  revalidatePath("/panel") // refresca el dashboard
 }
 
+
+/**
+ * Actualiza la prioridad de un ticket existente.
+ */
 export async function updatePriorityAction(id: string, priority: Priority): Promise<void> {
   const user = await requireUser()
   await updatePriority(user, id, priority)
@@ -48,6 +67,10 @@ export async function updatePriorityAction(id: string, priority: Priority): Prom
   revalidatePath("/panel/tickets")
 }
 
+
+/**
+ * Asigna (o desasigna, si assigneeId es null) un ticket a un usuario.
+ */
 export async function assignTicketAction(id: string, assigneeId: string | null): Promise<void> {
   const user = await requireUser()
   await assignTicket(user, id, assigneeId)
@@ -55,13 +78,16 @@ export async function assignTicketAction(id: string, assigneeId: string | null):
   revalidatePath("/panel/tickets")
 }
 
+/**
+ * Agrega un comentario a un ticket. Puede marcarse como interno (visible solo para el equipo).
+ */
 export async function addCommentAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const user = await requireUser()
   const id = String(formData.get("ticketId") ?? "")
   const body = String(formData.get("body") ?? "").trim()
   const internal = formData.get("internal") === "on"
   if (!body) return { error: "El comentario no puede estar vacío." }
-  await addComment(user, id, body, internal)
-  revalidatePath(`/panel/tickets/${id}`)
+  await addComment(user, id, body, internal) // delega el guardado del comentario al servicio
+  revalidatePath(`/panel/tickets/${id}`)  // refresca el detalle del ticket con el nuevo comentario
   return { ok: true }
 }
