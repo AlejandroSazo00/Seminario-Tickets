@@ -10,6 +10,7 @@ import {
   getUserById,
 } from "@/lib/services/users"
 import { ROLES, type Role } from "@/lib/types"
+import { getPasswordPolicyError } from "@/lib/security/password-policy"
 
 export type UserFormState = { error?: string; ok?: boolean } | undefined
 
@@ -27,7 +28,8 @@ export async function createUserAction(_prev: UserFormState, formData: FormData)
   if (!name || !email) return { error: "Nombre y correo son obligatorios." }
   if (!validEmail(email)) return { error: "El correo no tiene un formato válido." }
   if (!ROLES.includes(role)) return { error: "Rol no válido." }
-  if (password.length < 6) return { error: "La contraseña debe tener al menos 6 caracteres." }
+  const passwordError = getPasswordPolicyError(password)
+  if (passwordError) return { error: passwordError }
   if (await emailExists(email)) return { error: "Ya existe una cuenta con ese correo." }
 
   await createUser({ name, email, password, role })
@@ -48,9 +50,8 @@ export async function updateUserAction(_prev: UserFormState, formData: FormData)
   if (!name || !email) return { error: "Nombre y correo son obligatorios." }
   if (!validEmail(email)) return { error: "El correo no tiene un formato válido." }
   if (!ROLES.includes(role)) return { error: "Rol no válido." }
-  if (password.length > 0 && password.length < 6) {
-    return { error: "La contraseña debe tener al menos 6 caracteres." }
-  }
+  const passwordError = password ? getPasswordPolicyError(password) : null
+  if (passwordError) return { error: passwordError }
   if (await emailExists(email, id)) return { error: "Otro usuario ya usa ese correo." }
 
   await updateUser(id, { name, email, role, password: password || undefined })

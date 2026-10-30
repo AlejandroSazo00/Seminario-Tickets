@@ -13,10 +13,11 @@ interface Props {
   ticketId: string
   comments: CommentView[]
   canManage: boolean
+  canComment: boolean
   currentUserId: string
 }
 
-export function CommentThread({ ticketId, comments, canManage, currentUserId }: Props) {
+export function CommentThread({ ticketId, comments, canManage, canComment, currentUserId }: Props) {
   const [state, action, pending] = useActionState<FormState, FormData>(addCommentAction, undefined)
   const formRef = useRef<HTMLFormElement>(null)
   const router = useRouter()
@@ -76,25 +77,31 @@ export function CommentThread({ ticketId, comments, canManage, currentUserId }: 
         })}
       </div>
 
-      <form ref={formRef} action={action} className="space-y-2">
-        <input type="hidden" name="ticketId" value={ticketId} />
-        <Textarea name="body" rows={3} required placeholder="Escribe una respuesta…" />
-        {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
-        <div className="flex items-center justify-between gap-3">
-          {canManage ? (
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <input type="checkbox" name="internal" className="size-4 rounded border-input accent-[var(--chart-3)]" />
-              Nota interna (no visible para el cliente)
-            </label>
-          ) : (
-            <span />
-          )}
-          <Button type="submit" disabled={pending}>
-            <Send className="size-4" />
-            {pending ? "Enviando…" : "Enviar"}
-          </Button>
-        </div>
-      </form>
+      {canComment ? (
+        <form ref={formRef} action={action} className="space-y-2">
+          <input type="hidden" name="ticketId" value={ticketId} />
+          <Textarea name="body" rows={3} required placeholder="Escribe una respuesta…" />
+          {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
+          <div className="flex items-center justify-between gap-3">
+            {canManage ? (
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <input type="checkbox" name="internal" className="size-4 rounded border-input accent-[var(--chart-3)]" />
+                Nota interna (no visible para el cliente)
+              </label>
+            ) : (
+              <span />
+            )}
+            <Button type="submit" disabled={pending}>
+              <Send className="size-4" />
+              {pending ? "Enviando…" : "Enviar"}
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+          Ticket en modo de solo lectura: solo el agente asignado puede comentar.
+        </p>
+      )}
     </div>
   )
 }

@@ -5,21 +5,18 @@ import { AlertCircle } from "lucide-react"
 import { createTicketAction, type FormState } from "@/lib/actions/tickets"
 import { Field, Label, Input, Textarea, Select } from "@/components/ui/field"
 import { Button } from "@/components/ui/button"
-import {
-  CATEGORIES,
-  CHANNELS,
-  PRIORITIES,
-  CHANNEL_LABEL,
-  PRIORITY_LABEL,
-  type PublicUser,
-} from "@/lib/types"
+import type { PublicUser } from "@/lib/types"
+import type { CatalogEntry } from "@/lib/services/catalogs"
 
 interface Props {
   canManage: boolean
   clients: PublicUser[]
+  categories: CatalogEntry[]
+  priorities: CatalogEntry[]
+  channels: CatalogEntry[]
 }
 
-export function NewTicketForm({ canManage, clients }: Props) {
+export function NewTicketForm({ canManage, clients, categories, priorities, channels }: Props) {
   const [state, action, pending] = useActionState<FormState, FormData>(createTicketAction, undefined)
 
   return (
@@ -54,9 +51,9 @@ export function NewTicketForm({ canManage, clients }: Props) {
             <option value="" disabled>
               Selecciona…
             </option>
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
+            {categories.map((category) => (
+              <option key={category.value} value={category.value}>
+                {category.label}
               </option>
             ))}
           </Select>
@@ -65,9 +62,9 @@ export function NewTicketForm({ canManage, clients }: Props) {
         <Field>
           <Label htmlFor="priority">Prioridad</Label>
           <Select id="priority" name="priority" defaultValue="media">
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {PRIORITY_LABEL[p]}
+            {priorities.map((priority) => (
+              <option key={priority.value} value={priority.value}>
+                {priority.label}
               </option>
             ))}
           </Select>
@@ -75,10 +72,14 @@ export function NewTicketForm({ canManage, clients }: Props) {
 
         <Field>
           <Label htmlFor="channel">Canal de origen</Label>
-          <Select id="channel" name="channel" defaultValue="web">
-            {CHANNELS.map((c) => (
-              <option key={c} value={c}>
-                {CHANNEL_LABEL[c]}
+          <Select
+            id="channel"
+            name="channel"
+            defaultValue={channels.some((channel) => channel.value === "web") ? "web" : channels[0]?.value ?? ""}
+          >
+            {channels.map((channel) => (
+              <option key={channel.value} value={channel.value}>
+                {channel.label}
               </option>
             ))}
           </Select>

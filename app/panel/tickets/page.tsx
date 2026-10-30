@@ -7,6 +7,7 @@ import { TicketCard } from "@/components/tickets/ticket-card"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import type { Channel, Priority, Status } from "@/lib/types"
+import { getActiveCatalog } from "@/lib/services/catalogs"
 
 export default async function TicketsPage({
   searchParams,
@@ -26,7 +27,12 @@ export default async function TicketsPage({
       sp.assignee === "mine" ? user.id : (sp.assignee as Filters["assigneeId"]) ?? "todos",
   }
 
-  const tickets = await listTickets(user, filters)
+  const [tickets, statuses, priorities, channels] = await Promise.all([
+    listTickets(user, filters),
+    getActiveCatalog("status"),
+    getActiveCatalog("priority"),
+    getActiveCatalog("channel"),
+  ])
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
@@ -42,7 +48,7 @@ export default async function TicketsPage({
         </Button>
       </div>
 
-      <TicketFilters canManage={canManage} />
+      <TicketFilters canManage={canManage} statuses={statuses} priorities={priorities} channels={channels} />
 
       {tickets.length === 0 ? (
         <Card className="p-12 text-center">

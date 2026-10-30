@@ -4,11 +4,17 @@ import { requireUserOrRedirect } from "@/lib/auth/session"
 import { listUsers } from "@/lib/services/users"
 import { NewTicketForm } from "@/components/tickets/new-ticket-form"
 import { Card } from "@/components/ui/card"
+import { getActiveCatalog } from "@/lib/services/catalogs"
 
 export default async function NewTicketPage() {
   const user = await requireUserOrRedirect()
   const canManage = user.role === "agente" || user.role === "admin"
-  const clients = canManage ? (await listUsers()).filter((u) => u.role === "cliente") : []
+  const [clients, categories, priorities, channels] = await Promise.all([
+    canManage ? listUsers().then((users) => users.filter((u) => u.role === "cliente")) : [],
+    getActiveCatalog("category"),
+    getActiveCatalog("priority"),
+    getActiveCatalog("channel"),
+  ])
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -23,7 +29,7 @@ export default async function NewTicketPage() {
         <p className="text-sm text-muted-foreground">Registra una nueva incidencia o solicitud de soporte.</p>
       </div>
       <Card className="p-6">
-        <NewTicketForm canManage={canManage} clients={clients} />
+        <NewTicketForm canManage={canManage} clients={clients} categories={categories} priorities={priorities} channels={channels} />
       </Card>
     </div>
   )

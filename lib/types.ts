@@ -2,7 +2,8 @@
 
 export type Role = "cliente" | "agente" | "admin"
 
-export type Channel = "email" | "telefono" | "chat" | "web" | "whatsapp"
+export type Channel = "email" | "telefono" | "chat" | "web" | "whatsapp" | (string & {})
+type KnownChannel = "email" | "telefono" | "chat" | "web" | "whatsapp"
 
 export type Priority = "baja" | "media" | "alta" | "urgente"
 
@@ -14,6 +15,7 @@ export type HistoryType =
   | "prioridad"
   | "asignacion"
   | "comentario"
+  | "tiempo"
   | "reabierto"
   | "categoria"
 
@@ -85,7 +87,7 @@ export const STATUS_LABEL: Record<Status, string> = {
   cerrado: "Cerrado",
 }
 
-export const CHANNEL_LABEL: Record<Channel, string> = {
+export const CHANNEL_LABEL: Record<KnownChannel, string> = {
   email: "Correo",
   telefono: "Teléfono",
   chat: "Chat en vivo",
@@ -103,7 +105,7 @@ export const ROLES: Role[] = ["cliente", "agente", "admin"]
 
 export const PRIORITIES: Priority[] = ["baja", "media", "alta", "urgente"]
 export const STATUSES: Status[] = ["abierto", "en_progreso", "en_espera", "resuelto", "cerrado"]
-export const CHANNELS: Channel[] = ["email", "telefono", "chat", "web", "whatsapp"]
+export const CHANNELS: KnownChannel[] = ["email", "telefono", "chat", "web", "whatsapp"]
 
 /** Orden de peso para ordenar por prioridad (mayor = más urgente). */
 export const PRIORITY_WEIGHT: Record<Priority, number> = {

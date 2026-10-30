@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Ticket, PlusCircle, BarChart3, BookOpen, Users } from "lucide-react"
+import { LayoutDashboard, Ticket, PlusCircle, BarChart3, BookOpen, Users, ListChecks } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Role } from "@/lib/types"
 
@@ -13,8 +13,9 @@ const NAV = [
   { href: "/panel", label: "Resumen", icon: LayoutDashboard, roles: ["cliente", "agente", "admin"] as Role[] },
   { href: "/panel/tickets", label: "Tickets", icon: Ticket, roles: ["cliente", "agente", "admin"] as Role[] },
   { href: "/panel/tickets/nuevo", label: "Nuevo", icon: PlusCircle, roles: ["cliente", "agente", "admin"] as Role[] },
-  { href: "/panel/reportes", label: "Reportes", icon: BarChart3, roles: ["agente", "admin"] as Role[] },
+  { href: "/panel/reportes", label: "Reportes", icon: BarChart3, roles: ["admin"] as Role[] },
   { href: "/panel/usuarios", label: "Usuarios", icon: Users, roles: ["admin"] as Role[] },
+  { href: "/panel/catalogos", label: "Catálogos", icon: ListChecks, roles: ["admin"] as Role[] },
   { href: "/panel/documentacion", label: "Docs", icon: BookOpen, roles: ["cliente", "agente", "admin"] as Role[] },
 ]
 

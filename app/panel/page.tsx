@@ -6,10 +6,21 @@ import { StatCard } from "@/components/panel/stat-card"
 import { TicketCard } from "@/components/tickets/ticket-card"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { AssignedTicketFilter } from "@/components/panel/assigned-ticket-filter"
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>
+}) {
   const user = await requireUserOrRedirect()
-  const [tickets, reports] = await Promise.all([listTickets(user), getReports(user)])
+  const params = await searchParams
+  const canManage = user.role === "agente" || user.role === "admin"
+  const mine = canManage && params.assigned === "mine"
+  const [tickets, reports] = await Promise.all([
+    listTickets(user, mine ? { assigneeId: user.id } : {}),
+    getReports(user),
+  ])
   const recent = tickets.slice(0, 6)
   const isClient = user.role === "cliente"
 
@@ -52,21 +63,28 @@ export default async function DashboardPage() {
       <div>
         <div className="mb-3 flex items-center justify-between">
           <h3 className="font-semibold">Actividad reciente</h3>
-          <Link
-            href="/panel/tickets"
-            className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-          >
-            Ver todos <ArrowRight className="size-4" />
-          </Link>
+          <div className="flex items-center gap-4">
+            {canManage && <AssignedTicketFilter mine={mine} />}
+            <Link
+              href={mine ? "/panel/tickets?assignee=mine" : "/panel/tickets"}
+              className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+            >
+              Ver todos <ArrowRight className="size-4" />
+            </Link>
+          </div>
         </div>
         {recent.length === 0 ? (
           <Card className="p-10 text-center">
             <Inbox className="mx-auto size-10 text-muted-foreground/50" />
-            <p className="mt-3 font-medium">Aún no hay tickets</p>
-            <p className="text-sm text-muted-foreground">Crea tu primer ticket para comenzar el seguimiento.</p>
-            <Button className="mt-4" render={<Link href="/panel/tickets/nuevo" />}>
-              <PlusCircle className="size-4" /> Crear ticket
-            </Button>
+            <p className="mt-3 font-medium">{mine ? "No tienes tickets asignados" : "Aún no hay tickets"}</p>
+            {!mine && (
+              <>
+                <p className="text-sm text-muted-foreground">Crea tu primer ticket para comenzar el seguimiento.</p>
+                <Button className="mt-4" render={<Link href="/panel/tickets/nuevo" />}>
+                  <PlusCircle className="size-4" /> Crear ticket
+                </Button>
+              </>
+            )}
           </Card>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">

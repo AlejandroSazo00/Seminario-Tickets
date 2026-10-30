@@ -270,9 +270,9 @@ function manualUsuario(): (Paragraph | Table)[] {
     table(
       ["Rol", "Correo", "Contraseña"],
       [
-        ["Administrador", "admin@soporte.dev", "demo1234"],
-        ["Agente", "bruno@soporte.dev", "demo1234"],
-        ["Cliente", "diego@empresa.com", "demo1234"],
+        ["Administrador", "admin@soporte.dev", "MesaVivaDemo!2026"],
+        ["Agente", "bruno@soporte.dev", "MesaVivaDemo!2026"],
+        ["Cliente", "diego@empresa.com", "MesaVivaDemo!2026"],
       ],
     ),
 

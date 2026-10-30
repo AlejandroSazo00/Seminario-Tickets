@@ -1,6 +1,8 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
+import { cookies } from 'next/headers'
+import { ThemeToggle } from '@/components/theme/theme-toggle'
 import './globals.css'
 
 // Carga de la fuente tipográfica primaria definida en el Sistema de Diseño (Inter)
@@ -52,18 +54,20 @@ export const viewport: Viewport = {
  * LAYOUT RAÍZ
  * Estructura contenedora global que aplica la tipografía 'Inter' y el fondo base de la UI.
  */
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const store = await cookies()
+  const theme = store.get('theme')?.value
+  const initialTheme = theme === 'light' || theme === 'dark' ? theme : 'system'
+  const themeClass = theme === 'light' || theme === 'dark' ? theme : ''
   return (
-    <html lang="es" className={`${inter.variable} bg-background`}>
+    <html lang="es" className={`${inter.variable} bg-background ${themeClass}`}>
       <body className="font-sans antialiased">
-        {/* Renderizado de las vistas (Login, Dashboard, etc.) */}
         {children}
-        
-        {/* Métricas de rendimiento y uso de UI en producción */}
+        <ThemeToggle initialTheme={initialTheme} />
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

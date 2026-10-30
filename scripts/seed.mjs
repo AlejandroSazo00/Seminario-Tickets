@@ -14,7 +14,7 @@ const daysAgo = (d) => new Date(now - d * 86_400_000).toISOString()
 const hoursAgo = (h) => new Date(now - h * 3_600_000).toISOString()
 
 function mkUser(name, email, role) {
-  const { hash, salt } = hashPassword("demo1234")
+  const { hash, salt } = hashPassword("MesaVivaDemo!2026")
   return { id: randomUUID(), name, email, role, passwordHash: hash, salt, createdAt: daysAgo(120) }
 }
 

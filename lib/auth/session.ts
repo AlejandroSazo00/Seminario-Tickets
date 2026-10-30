@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { sql, rowToUser, randomUUID } from "@/lib/db/sql"
 import { hashPassword, verifyPassword, signSession, verifySession } from "@/lib/crypto"
+import { getPasswordPolicyError } from "@/lib/security/password-policy"
 import type { PublicUser, Role, User } from "@/lib/types"
 
 const COOKIE_NAME = "ticket_session"
@@ -82,9 +83,8 @@ export async function register(name: string, email: string, password: string, ro
   if (existing) {
     return { ok: false, error: "Ya existe una cuenta con ese correo." }
   }
-  if (password.length < 6) {
-    return { ok: false, error: "La contraseña debe tener al menos 6 caracteres." }
-  }
+  const passwordError = getPasswordPolicyError(password)
+  if (passwordError) return { ok: false, error: passwordError }
   const { hash, salt } = hashPassword(password)
   const id = randomUUID()
   await sql`

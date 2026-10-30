@@ -260,9 +260,14 @@ function UserDialog({
               id="password"
               name="password"
               type="password"
-              placeholder={user ? "Dejar en blanco para no cambiar" : "Mínimo 6 caracteres"}
+              placeholder={user ? "Dejar en blanco para no cambiar" : "Mínimo 15 caracteres"}
+              minLength={user ? undefined : 15}
+              pattern="(?=.*\\p{Ll})(?=.*\\p{Lu})(?=.*\\p{N})(?=.*[\\p{P}\\p{S}])\\S{15,}"
               autoComplete="new-password"
             />
+            <p className="text-xs text-muted-foreground">
+              Si defines una contraseña: mínimo 15 caracteres, mayúscula, minúscula, número y carácter especial; sin espacios.
+            </p>
           </Field>
 
           {state?.error && (

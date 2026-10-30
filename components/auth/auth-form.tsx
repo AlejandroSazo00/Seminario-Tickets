@@ -69,8 +69,15 @@ export function AuthForm({ mode }: AuthFormProps) {
           type="password"
           placeholder="••••••••"
           required
+          minLength={mode === "register" ? 15 : undefined}
+          pattern={mode === "register" ? "(?=.*\\p{Ll})(?=.*\\p{Lu})(?=.*\\p{N})(?=.*[\\p{P}\\p{S}])\\S{15,}" : undefined}
           autoComplete={mode === "login" ? "current-password" : "new-password"}
         />
+        {mode === "register" && (
+          <p className="text-xs text-muted-foreground">
+            Mínimo 15 caracteres, con mayúscula, minúscula, número y carácter especial; sin espacios.
+          </p>
+        )}
       </div>
 
       {/* Alerta de error en caso de fallo en la autenticación */}

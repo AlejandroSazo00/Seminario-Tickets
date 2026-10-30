@@ -2,14 +2,17 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft, Calendar, Tag, User2 } from "lucide-react"
 import { requireUserOrRedirect } from "@/lib/auth/session"
-import { getTicketDetail } from "@/lib/services/tickets"
+import { getTicketDetail, getTicketTimeTracking } from "@/lib/services/tickets"
 import { listAgents } from "@/lib/services/users"
 import { PriorityBadge, StatusBadge, ChannelBadge } from "@/components/tickets/badges"
 import { TicketControls } from "@/components/tickets/ticket-controls"
 import { CommentThread } from "@/components/tickets/comment-thread"
 import { HistoryTimeline } from "@/components/tickets/history-timeline"
+import { TimeTracker } from "@/components/tickets/time-tracker"
 import { Card } from "@/components/ui/card"
 import { formatDateTime } from "@/lib/format"
+import { canCommentOnTicket, canManageTicket } from "@/lib/tickets/permissions"
+import { listCatalogEntries } from "@/lib/services/catalogs"
 
 export default async function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -18,7 +21,16 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
   if (!detail) notFound()
 
   const canManage = user.role === "agente" || user.role === "admin"
-  const agents = canManage ? await listAgents() : []
+  const canEditTicket = canManageTicket(user, detail.ticket)
+  const canComment = canCommentOnTicket(user, detail.ticket)
+  const [agents, timeTracking, catalogEntries] = await Promise.all([
+    canManage ? listAgents() : [],
+    canManage ? getTicketTimeTracking(user, id) : null,
+    listCatalogEntries(),
+  ])
+  const catalogLabels = Object.fromEntries(
+    catalogEntries.map((entry) => [`${entry.kind}:${entry.value}`, entry.label]),
+  )
   const { ticket, requester, assignee, comments, history } = detail
 
   return (
@@ -35,9 +47,9 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
           <Card className="p-6">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-sm text-muted-foreground">{ticket.code}</span>
-              <StatusBadge status={ticket.status} />
-              <PriorityBadge priority={ticket.priority} />
-              <ChannelBadge channel={ticket.channel} />
+              <StatusBadge status={ticket.status} label={catalogLabels[`status:${ticket.status}`]} />
+              <PriorityBadge priority={ticket.priority} label={catalogLabels[`priority:${ticket.priority}`]} />
+              <ChannelBadge channel={ticket.channel} label={catalogLabels[`channel:${ticket.channel}`]} />
             </div>
             <h1 className="mt-3 text-xl font-semibold tracking-tight text-balance">{ticket.title}</h1>
             <p className="mt-3 whitespace-pre-wrap leading-relaxed text-foreground/90">{ticket.description}</p>
@@ -48,13 +60,14 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
               ticketId={ticket.id}
               comments={comments}
               canManage={canManage}
+              canComment={canComment}
               currentUserId={user.id}
             />
           </Card>
         </div>
 
         <div className="space-y-5">
-          {canManage ? (
+          {canEditTicket ? (
             <Card className="p-5">
               <h3 className="mb-4 font-semibold">Gestión</h3>
               <TicketControls
@@ -63,20 +76,54 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
                 priority={ticket.priority}
                 assigneeId={ticket.assigneeId}
                 agents={agents}
+                role={user.role}
+                priorityLocked={
+                  !!ticket.assigneeId ||
+                  history.some((event) => event.type === "asignacion" && event.to !== null)
+                }
+                activeTicketEntry={timeTracking?.activeTicketEntry ?? null}
+                statusCatalog={catalogEntries.filter((entry) => entry.kind === "status")}
+                priorityCatalog={catalogEntries.filter((entry) => entry.kind === "priority")}
               />
             </Card>
           ) : (
             <Card className="space-y-3 p-5">
-              <h3 className="font-semibold">Detalles</h3>
-              <Detail icon={Tag} label="Estado" value={<StatusBadge status={ticket.status} />} />
+              <h3 className="font-semibold">
+                {canManage ? "Ticket en solo lectura" : "Detalles"}
+              </h3>
+              <Detail
+                icon={Tag}
+                label="Estado"
+                value={<StatusBadge status={ticket.status} label={catalogLabels[`status:${ticket.status}`]} />}
+              />
               <Detail icon={User2} label="Agente" value={assignee?.name ?? "Sin asignar"} />
+              {canManage && (
+                <p className="text-xs text-muted-foreground">
+                  Solo puedes gestionar tickets asignados a tu usuario. La asignación la administra un administrador.
+                </p>
+              )}
+            </Card>
+          )}
+
+          {canManage && timeTracking && (
+            <Card className="space-y-4 p-5">
+              <h3 className="font-semibold">Tiempo de trabajo</h3>
+              <TimeTracker
+                ticketId={ticket.id}
+                entries={timeTracking.entries}
+                totalSeconds={timeTracking.totalSeconds}
+                activeEntry={timeTracking.activeEntry}
+                activeTicketEntry={timeTracking.activeTicketEntry}
+                canControl={canEditTicket}
+                isAdmin={user.role === "admin"}
+              />
             </Card>
           )}
 
           <Card className="space-y-3 p-5 text-sm">
             <h3 className="font-semibold">Información</h3>
             <Detail icon={User2} label="Solicitante" value={requester?.name ?? "—"} />
-            <Detail icon={Tag} label="Categoría" value={ticket.category} />
+            <Detail icon={Tag} label="Categoría" value={catalogLabels[`category:${ticket.category}`] ?? ticket.category} />
             <Detail icon={Calendar} label="Creado" value={formatDateTime(ticket.createdAt)} />
             <Detail icon={Calendar} label="Actualizado" value={formatDateTime(ticket.updatedAt)} />
             {ticket.closedAt && (
@@ -85,7 +132,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
           </Card>
 
           <Card className="p-5">
-            <HistoryTimeline history={history} />
+            <HistoryTimeline history={history} catalogEntries={catalogEntries} />
           </Card>
         </div>
       </div>

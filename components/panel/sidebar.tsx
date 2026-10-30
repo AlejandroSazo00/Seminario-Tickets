@@ -3,7 +3,7 @@
 // Importación de utilidades de navegación y utilidades visuales
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Ticket, PlusCircle, BarChart3, BookOpen, LifeBuoy, Users } from "lucide-react"
+import { LayoutDashboard, Ticket, PlusCircle, BarChart3, BookOpen, LifeBuoy, Users, ListChecks } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Role } from "@/lib/types"
 
@@ -23,8 +23,9 @@ const NAV: NavItem[] = [
   { href: "/panel", label: "Resumen", icon: LayoutDashboard, roles: ["cliente", "agente", "admin"] },
   { href: "/panel/tickets", label: "Tickets", icon: Ticket, roles: ["cliente", "agente", "admin"] },
   { href: "/panel/tickets/nuevo", label: "Nuevo ticket", icon: PlusCircle, roles: ["cliente", "agente", "admin"] },
-  { href: "/panel/reportes", label: "Reportes", icon: BarChart3, roles: ["agente", "admin"] },
+  { href: "/panel/reportes", label: "Reportes", icon: BarChart3, roles: ["admin"] },
   { href: "/panel/usuarios", label: "Usuarios", icon: Users, roles: ["admin"] },
+  { href: "/panel/catalogos", label: "Catálogos", icon: ListChecks, roles: ["admin"] },
   { href: "/panel/documentacion", label: "Documentación", icon: BookOpen, roles: ["cliente", "agente", "admin"] },
 ]
 

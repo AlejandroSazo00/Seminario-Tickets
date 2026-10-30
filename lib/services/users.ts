@@ -1,6 +1,7 @@
 import "server-only"
 import { sql, rowToUser, randomUUID } from "@/lib/db/sql"
 import { hashPassword } from "@/lib/crypto"
+import { getPasswordPolicyError } from "@/lib/security/password-policy"
 import type { PublicUser, Role, User } from "@/lib/types"
 
 function toPublic(u: User): PublicUser {
@@ -58,6 +59,8 @@ export async function emailExists(email: string, exceptId?: string): Promise<boo
 }
 
 export async function createUser(input: CreateUserInput): Promise<PublicUser> {
+  const passwordError = getPasswordPolicyError(input.password)
+  if (passwordError) throw new Error(passwordError)
   const { hash, salt } = hashPassword(input.password)
   const id = randomUUID()
   const rows = (await sql`
@@ -77,6 +80,8 @@ export interface UpdateUserInput {
 
 export async function updateUser(id: string, input: UpdateUserInput): Promise<PublicUser> {
   if (input.password && input.password.length > 0) {
+    const passwordError = getPasswordPolicyError(input.password)
+    if (passwordError) throw new Error(passwordError)
     const { hash, salt } = hashPassword(input.password)
     const rows = (await sql`
       UPDATE users

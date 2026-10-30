@@ -155,7 +155,7 @@
 
 /* Detecta la preferencia del sistema operativo si no se fuerza la clase .light */
 @media (prefers-color-scheme: dark) {
-  :root:not(.light) {
+  :root:not(.light):not(.dark) {
     color-scheme: dark;
     --background: oklch(0.17 0.02 260);
     --foreground: oklch(0.96 0.01 255);

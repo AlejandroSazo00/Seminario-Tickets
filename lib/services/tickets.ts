@@ -11,6 +11,8 @@ import type {
 } from "@/lib/types"
 import { PRIORITY_WEIGHT } from "@/lib/types"
 import { userMap } from "@/lib/services/users"
+import { canAssignTicket, canCommentOnTicket, canManageTicket } from "@/lib/tickets/permissions"
+import { getCatalogLabelMap, isActiveCatalogValue } from "@/lib/services/catalogs"
 
 type Row = Record<string, unknown>
 
@@ -20,6 +22,9 @@ export interface TicketView extends Ticket {
   requester: PublicUser | null
   assignee: PublicUser | null
   commentCount: number
+  statusLabel: string
+  priorityLabel: string
+  channelLabel: string
 }
 
 export interface CommentView extends Comment {
@@ -36,6 +41,23 @@ export interface TicketDetail {
   assignee: PublicUser | null
   comments: CommentView[]
   history: HistoryView[]
+}
+
+export interface TicketTimeEntry {
+  id: string
+  ticketId: string
+  agentId: string
+  agentName: string
+  startedAt: string
+  stoppedAt: string | null
+  durationSeconds: number | null
+}
+
+export interface TicketTimeTracking {
+  entries: TicketTimeEntry[]
+  totalSeconds: number
+  activeEntry: TicketTimeEntry | null
+  activeTicketEntry: TicketTimeEntry | null
 }
 
 export interface TicketFilters {
@@ -115,13 +137,20 @@ export async function listTickets(viewer: PublicUser, filters: TicketFilters = {
     return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   })
 
-  const [users, counts] = await Promise.all([userMap(), commentCounts()])
+  const [users, counts, catalogLabels] = await Promise.all([
+    userMap(),
+    commentCounts(),
+    getCatalogLabelMap(),
+  ])
 
   return rows.map((t) => ({
     ...t,
     requester: users.get(t.requesterId) ?? null,
     assignee: t.assigneeId ? (users.get(t.assigneeId) ?? null) : null,
     commentCount: counts.get(t.id) ?? 0,
+    statusLabel: catalogLabels[`status:${t.status}`] ?? t.status,
+    priorityLabel: catalogLabels[`priority:${t.priority}`] ?? t.priority,
+    channelLabel: catalogLabels[`channel:${t.channel}`] ?? t.channel,
   }))
 }
 
@@ -174,6 +203,14 @@ export interface CreateTicketInput {
 }
 
 export async function createTicket(viewer: PublicUser, input: CreateTicketInput): Promise<Ticket> {
+  const [categoryActive, priorityActive, channelActive] = await Promise.all([
+    isActiveCatalogValue("category", input.category),
+    isActiveCatalogValue("priority", input.priority),
+    isActiveCatalogValue("channel", input.channel),
+  ])
+  if (!categoryActive) throw new Error("INVALID_CATEGORY")
+  if (!priorityActive) throw new Error("INVALID_CATALOG_PRIORITY")
+  if (!channelActive) throw new Error("INVALID_CATALOG_CHANNEL")
   const requesterId = canManage(viewer) && input.requesterId ? input.requesterId : viewer.id
   const id = randomUUID()
   const code = await nextTicketCode()
@@ -198,6 +235,7 @@ export async function createTicket(viewer: PublicUser, input: CreateTicketInput)
 export async function updateStatus(viewer: PublicUser, id: string, status: Status, note?: string): Promise<Ticket> {
   const t = await requireManageableTicket(viewer, id)
   if (t.status === status) return t
+  if (!(await isActiveCatalogValue("status", status))) throw new Error("INVALID_CATALOG_STATUS")
   const from = t.status
   const reopened =
     (from === "resuelto" || from === "cerrado") && (status === "abierto" || status === "en_progreso")
@@ -205,66 +243,343 @@ export async function updateStatus(viewer: PublicUser, id: string, status: Statu
   // en cualquiera de los dos para que los reportes de tiempo de resolución
   // los contemplen. Al reabrir (pasar a abierto/en_progreso) se limpia.
   const closedAt = status === "cerrado" || status === "resuelto" ? new Date().toISOString() : null
-  const rows = (await sql`
-    UPDATE tickets SET status = ${status}, closed_at = ${closedAt}, updated_at = now()
-    WHERE id = ${t.id} RETURNING *
-  `) as Row[]
-  await addHistory(t.id, viewer.id, {
-    type: reopened ? "reabierto" : "estado",
-    from,
-    to: status,
-    note: note ?? null,
-  })
-  return rowToTicket(rows[0])
+  const [lockedRows, , rows] = await sql.transaction([
+    sql`
+      SELECT id FROM tickets
+      WHERE id = ${t.id}
+        AND (${viewer.role === "admin"} OR assignee_id = ${viewer.id})
+      FOR UPDATE
+    `,
+    sql`
+      WITH stopped AS (
+        UPDATE ticket_time_entries
+        SET stopped_at = now(),
+            duration_seconds = GREATEST(0, floor(extract(epoch FROM (now() - started_at)))::integer)
+        WHERE ticket_id = ${t.id}
+          AND stopped_at IS NULL
+          AND ${closedAt !== null}
+          AND EXISTS (
+            SELECT 1 FROM tickets
+            WHERE id = ${t.id}
+              AND (${viewer.role === "admin"} OR assignee_id = ${viewer.id})
+          )
+        RETURNING agent_id, duration_seconds
+      )
+      INSERT INTO history (id, ticket_id, actor_id, type, "from", "to", note)
+      SELECT
+        ${randomUUID()},
+        ${t.id},
+        ${viewer.id},
+        'tiempo',
+        NULL,
+        NULL,
+        'Cronómetro(s) detenido(s) automáticamente al finalizar el ticket: ' ||
+          string_agg(
+            agent.name || ' (' ||
+              lpad((stopped.duration_seconds / 3600)::text, 2, '0') || ':' ||
+              lpad(((stopped.duration_seconds % 3600) / 60)::text, 2, '0') || ':' ||
+              lpad((stopped.duration_seconds % 60)::text, 2, '0') || ')',
+            ', '
+          ) || '.'
+      FROM stopped
+      JOIN users AS agent ON agent.id = stopped.agent_id
+      HAVING count(*) > 0
+    `,
+    sql`
+      UPDATE tickets SET status = ${status}, closed_at = ${closedAt}, updated_at = now()
+      WHERE id = ${t.id}
+        AND (${viewer.role === "admin"} OR assignee_id = ${viewer.id})
+      RETURNING *
+    `,
+    sql`
+      INSERT INTO history (id, ticket_id, actor_id, type, "from", "to", note)
+      SELECT
+        ${randomUUID()}, ${t.id}, ${viewer.id}, ${reopened ? "reabierto" : "estado"},
+        ${from}, ${status}, ${note ?? null}
+      WHERE EXISTS (
+        SELECT 1 FROM tickets
+        WHERE id = ${t.id}
+          AND (${viewer.role === "admin"} OR assignee_id = ${viewer.id})
+      )
+    `,
+  ])
+  if (lockedRows.length === 0 || (rows as Row[]).length === 0) throw new Error("FORBIDDEN")
+  return rowToTicket((rows as Row[])[0])
 }
 
 export async function updatePriority(viewer: PublicUser, id: string, priority: Priority): Promise<Ticket> {
   const t = await requireManageableTicket(viewer, id)
   if (t.priority === priority) return t
+  if (!(await isActiveCatalogValue("priority", priority))) throw new Error("INVALID_CATALOG_PRIORITY")
+
   const from = t.priority
   const rows = (await sql`
-    UPDATE tickets SET priority = ${priority}, updated_at = now() WHERE id = ${t.id} RETURNING *
+    UPDATE tickets
+    SET priority = ${priority}, updated_at = now()
+    WHERE id = ${t.id}
+      AND assignee_id IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM history
+        WHERE ticket_id = ${t.id} AND type = 'asignacion' AND "to" IS NOT NULL
+      )
+    RETURNING *
   `) as Row[]
+  if (rows.length === 0) throw new Error("PRIORITY_LOCKED")
   await addHistory(t.id, viewer.id, { type: "prioridad", from, to: priority, note: null })
   return rowToTicket(rows[0])
 }
 
-export async function assignTicket(viewer: PublicUser, id: string, assigneeId: string | null): Promise<Ticket> {
+export async function assignTicket(
+  viewer: PublicUser,
+  id: string,
+  assigneeId: string | null,
+  overrideActiveTimer = false,
+): Promise<Ticket> {
+  if (!canAssignTicket(viewer)) throw new Error("FORBIDDEN")
   const t = await requireManageableTicket(viewer, id)
   const from = t.assigneeId
-  const newStatus = assigneeId && t.status === "abierto" ? "en_progreso" : t.status
-  const rows = (await sql`
-    UPDATE tickets SET assignee_id = ${assigneeId}, status = ${newStatus}, updated_at = now()
-    WHERE id = ${t.id} RETURNING *
-  `) as Row[]
-  await addHistory(t.id, viewer.id, { type: "asignacion", from, to: assigneeId, note: null })
-  return rowToTicket(rows[0])
+  if (from === assigneeId) return t
+
+  if (assigneeId) {
+    const assigneeRows = (await sql`
+      SELECT id
+      FROM users
+      WHERE id = ${assigneeId}
+        AND active = true
+        AND role IN ('agente', 'admin')
+    `) as Row[]
+    if (assigneeRows.length === 0) throw new Error("INVALID_ASSIGNEE")
+  }
+
+  const [lockedRows, activeRows, updatedRows] = await sql.transaction([
+    sql`SELECT id FROM tickets WHERE id = ${t.id} FOR UPDATE`,
+    sql`
+    SELECT entry.agent_id, agent.name AS agent_name, entry.started_at
+    FROM ticket_time_entries AS entry
+    JOIN users AS agent ON agent.id = entry.agent_id
+    WHERE entry.ticket_id = ${t.id} AND entry.stopped_at IS NULL
+    ORDER BY entry.started_at ASC
+    `,
+    sql`
+      WITH active AS (
+        SELECT entry.agent_id, entry.started_at
+        FROM ticket_time_entries AS entry
+        WHERE entry.ticket_id = ${t.id} AND entry.stopped_at IS NULL
+      ),
+      stopped AS (
+        UPDATE ticket_time_entries
+        SET stopped_at = now(),
+            duration_seconds = GREATEST(0, floor(extract(epoch FROM (now() - started_at)))::integer)
+        WHERE ticket_id = ${t.id}
+          AND stopped_at IS NULL
+          AND ${overrideActiveTimer}
+        RETURNING agent_id, duration_seconds
+      ),
+      updated AS (
+        UPDATE tickets
+        SET assignee_id = ${assigneeId},
+            status = CASE WHEN ${assigneeId !== null} AND status = 'abierto' THEN 'en_progreso' ELSE status END,
+            updated_at = now()
+        WHERE id = ${t.id}
+          AND (${overrideActiveTimer} OR NOT EXISTS (SELECT 1 FROM active))
+        RETURNING *
+      ),
+      timer_note AS (
+        SELECT string_agg(
+          agent.name || ' (' ||
+            lpad((stopped.duration_seconds / 3600)::text, 2, '0') || ':' ||
+            lpad(((stopped.duration_seconds % 3600) / 60)::text, 2, '0') || ':' ||
+            lpad((stopped.duration_seconds % 60)::text, 2, '0') || ')',
+          ', '
+        ) AS details
+        FROM stopped
+        JOIN users AS agent ON agent.id = stopped.agent_id
+      ),
+      history_written AS (
+        INSERT INTO history (id, ticket_id, actor_id, type, "from", "to", note)
+        SELECT
+          ${randomUUID()},
+          updated.id,
+          ${viewer.id},
+          'asignacion',
+          ${from},
+          ${assigneeId},
+          CASE
+            WHEN timer_note.details IS NULL THEN NULL
+            ELSE 'Cronómetro detenido al reasignar. Agente(s) anterior(es) y tiempo: ' || timer_note.details || '.'
+          END
+        FROM updated
+        CROSS JOIN timer_note
+        RETURNING ticket_id
+      )
+      SELECT * FROM updated
+    `,
+  ])
+  const ticketRows = updatedRows as Row[]
+  if (lockedRows.length === 0) throw new Error("NOT_FOUND")
+  if (ticketRows.length === 0) {
+    if (activeRows.length > 0) throw new Error("ACTIVE_TIMER")
+    throw new Error("TICKET_UPDATE_FAILED")
+  }
+  return rowToTicket(ticketRows[0])
 }
 
 export async function addComment(viewer: PublicUser, id: string, body: string, internal = false): Promise<Comment> {
   const ticket = await findTicket(id)
-  if (!ticket || !canView(viewer, ticket)) throw new Error("NOT_FOUND")
+  if (!ticket) throw new Error("NOT_FOUND")
+  if (!canCommentOnTicket(viewer, ticket)) throw new Error("FORBIDDEN")
   const isInternal = canManage(viewer) ? internal : false // clientes no crean notas internas
+  const [lockedRows, commentRows] = await sql.transaction([
+    sql`
+      SELECT id FROM tickets
+      WHERE id = ${ticket.id}
+        AND (
+          ${viewer.role === "admin"}
+          OR (${viewer.role === "agente"} AND assignee_id = ${viewer.id})
+          OR (${viewer.role === "cliente"} AND requester_id = ${viewer.id})
+        )
+      FOR UPDATE
+    `,
+    sql`
+      WITH inserted AS (
+        INSERT INTO comments (id, ticket_id, author_id, body, internal)
+        SELECT ${randomUUID()}, id, ${viewer.id}, ${body.trim()}, ${isInternal}
+        FROM tickets
+        WHERE id = ${ticket.id}
+          AND (
+            ${viewer.role === "admin"}
+            OR (${viewer.role === "agente"} AND assignee_id = ${viewer.id})
+            OR (${viewer.role === "cliente"} AND requester_id = ${viewer.id})
+          )
+        RETURNING *
+      ),
+      history_written AS (
+        INSERT INTO history (id, ticket_id, actor_id, type, "from", "to", note)
+        SELECT
+          ${randomUUID()}, ticket_id, ${viewer.id}, 'comentario', NULL, NULL,
+          ${isInternal ? "Nota interna" : null}
+        FROM inserted
+        RETURNING id
+      ),
+      updated AS (
+        UPDATE tickets
+        SET updated_at = now()
+        WHERE id = ${ticket.id} AND EXISTS (SELECT 1 FROM inserted)
+        RETURNING id
+      )
+      SELECT * FROM inserted
+    `,
+  ])
+  if (lockedRows.length === 0 || commentRows.length === 0) throw new Error("FORBIDDEN")
+  return rowToComment((commentRows as Row[])[0])
+}
+
+export async function getTicketTimeTracking(viewer: PublicUser, id: string): Promise<TicketTimeTracking> {
+  if (!canManage(viewer)) throw new Error("FORBIDDEN")
+  const ticket = await findTicket(id)
+  if (!ticket) throw new Error("NOT_FOUND")
+
   const rows = (await sql`
-    INSERT INTO comments (id, ticket_id, author_id, body, internal)
-    VALUES (${randomUUID()}, ${ticket.id}, ${viewer.id}, ${body.trim()}, ${isInternal})
-    RETURNING *
+    SELECT entry.*, agent.name AS agent_name
+    FROM ticket_time_entries AS entry
+    JOIN users AS agent ON agent.id = entry.agent_id
+    WHERE entry.ticket_id = ${ticket.id}
+    ORDER BY entry.started_at DESC
   `) as Row[]
+
+  const entries = rows.map((row): TicketTimeEntry => ({
+    id: row.id as string,
+    ticketId: row.ticket_id as string,
+    agentId: row.agent_id as string,
+    agentName: row.agent_name as string,
+    startedAt: new Date(row.started_at as string).toISOString(),
+    stoppedAt: row.stopped_at ? new Date(row.stopped_at as string).toISOString() : null,
+    durationSeconds: row.duration_seconds == null ? null : Number(row.duration_seconds),
+  }))
+
+  return {
+    entries,
+    totalSeconds: entries.reduce((total, entry) => total + (entry.durationSeconds ?? 0), 0),
+    activeEntry: entries.find((entry) => entry.agentId === viewer.id && entry.stoppedAt === null) ?? null,
+    activeTicketEntry: entries.find((entry) => entry.stoppedAt === null) ?? null,
+  }
+}
+
+export async function startTicketTimeTracking(viewer: PublicUser, id: string): Promise<void> {
+  const ticket = await requireManageableTicket(viewer, id)
+  if (ticket.status === "cerrado" || ticket.status === "resuelto") {
+    throw new Error("TICKET_CLOSED")
+  }
+
+  const rows = (await sql`
+    WITH eligible AS (
+      SELECT id
+      FROM tickets
+      WHERE id = ${ticket.id}
+        AND (${viewer.role === "admin"} OR assignee_id = ${viewer.id})
+        AND status NOT IN ('resuelto', 'cerrado')
+      FOR UPDATE
+    )
+    INSERT INTO ticket_time_entries (id, ticket_id, agent_id)
+    SELECT ${randomUUID()}, eligible.id, ${viewer.id}
+    FROM eligible
+    RETURNING id
+  `) as Row[]
+  if (rows.length === 0) throw new Error("FORBIDDEN")
   await touch(ticket.id)
-  await addHistory(ticket.id, viewer.id, {
-    type: "comentario",
-    from: null,
-    to: null,
-    note: isInternal ? "Nota interna" : null,
-  })
-  return rowToComment(rows[0])
+}
+
+export async function stopTicketTimeTracking(viewer: PublicUser, id: string): Promise<void> {
+  if (!canManage(viewer)) throw new Error("FORBIDDEN")
+  const ticket = await findTicket(id)
+  if (!ticket) throw new Error("NOT_FOUND")
+  if (!canManageTicket(viewer, ticket)) throw new Error("FORBIDDEN")
+
+  const rows = (await sql`
+    WITH stopped AS (
+      UPDATE ticket_time_entries
+      SET stopped_at = now(),
+          duration_seconds = GREATEST(0, floor(extract(epoch FROM (now() - started_at)))::integer)
+      WHERE ticket_id = ${ticket.id}
+        AND (${viewer.role === "admin"} OR agent_id = ${viewer.id})
+        AND stopped_at IS NULL
+      RETURNING agent_id, duration_seconds
+    ),
+    history_written AS (
+      INSERT INTO history (id, ticket_id, actor_id, type, "from", "to", note)
+      SELECT
+        ${randomUUID()}, ${ticket.id}, ${viewer.id}, 'tiempo', NULL, NULL,
+        ${viewer.role === "admin" ? "Administrador detuvo manualmente el cronómetro: " : "Agente detuvo su cronómetro: "} ||
+          string_agg(
+            agent.name || ' (' ||
+              lpad((stopped.duration_seconds / 3600)::text, 2, '0') || ':' ||
+              lpad(((stopped.duration_seconds % 3600) / 60)::text, 2, '0') || ':' ||
+              lpad((stopped.duration_seconds % 60)::text, 2, '0') || ')',
+            ', '
+          ) || '.'
+      FROM stopped
+      JOIN users AS agent ON agent.id = stopped.agent_id
+      HAVING count(*) > 0
+      RETURNING id
+    )
+    SELECT * FROM stopped
+  `) as Row[]
+  if (rows.length === 0) throw new Error("TIMER_NOT_RUNNING")
+  await touch(ticket.id)
 }
 
 async function requireManageableTicket(viewer: PublicUser, id: string): Promise<Ticket> {
-  if (viewer.role !== "agente" && viewer.role !== "admin") throw new Error("FORBIDDEN")
   const t = await findTicket(id)
   if (!t) throw new Error("NOT_FOUND")
+  if (!canManageTicket(viewer, t)) throw new Error("FORBIDDEN")
   return t
+}
+
+function formatElapsedSeconds(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  return [hours, minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":")
 }
 
 // ------- Reportes -------
@@ -278,12 +593,22 @@ export interface ReportData {
   porPrioridad: { key: Priority; label: string; value: number }[]
   porCanal: { key: Channel; label: string; value: number }[]
   porAgente: { name: string; activos: number; resueltos: number }[]
+  tiempoPorAgenteTarea: {
+    agentId: string
+    agentName: string
+    ticketCode: string
+    ticketTitle: string
+    totalSeconds: number
+  }[]
   tendencia: { fecha: string; creados: number; resueltos: number }[]
   tiempoPromedioResolucionHoras: number | null
 }
 
 export async function getReports(viewer: PublicUser): Promise<ReportData> {
-  const { PRIORITY_LABEL, STATUS_LABEL, CHANNEL_LABEL, STATUSES, PRIORITIES, CHANNELS } = await import("@/lib/types")
+  const { STATUSES, PRIORITIES, CHANNELS } = await import("@/lib/types")
+  const catalogLabels = await getCatalogLabelMap()
+  const { getActiveCatalog } = await import("@/lib/services/catalogs")
+  const channels = await getActiveCatalog("channel")
 
   const ticketRows = (
     viewer.role === "cliente"
@@ -341,6 +666,37 @@ export async function getReports(viewer: PublicUser): Promise<ReportData> {
           })) as { name: string; activos: number; resueltos: number }[]
         ).filter((a) => a.activos + a.resueltos > 0)
 
+  const tiempoPorAgenteTarea: ReportData["tiempoPorAgenteTarea"] =
+    viewer.role !== "admin"
+      ? []
+      : (
+          (await sql`
+            SELECT
+              agent.id AS agent_id,
+              agent.name AS agent_name,
+              ticket.code AS ticket_code,
+              ticket.title AS ticket_title,
+              SUM(
+                CASE
+                  WHEN entry.stopped_at IS NULL
+                    THEN GREATEST(0, floor(extract(epoch FROM (now() - entry.started_at)))::integer)
+                  ELSE entry.duration_seconds
+                END
+              )::int AS total_seconds
+            FROM ticket_time_entries AS entry
+            JOIN users AS agent ON agent.id = entry.agent_id
+            JOIN tickets AS ticket ON ticket.id = entry.ticket_id
+            GROUP BY agent.id, agent.name, ticket.id, ticket.code, ticket.title
+            ORDER BY agent.name, ticket.code
+          `) as Row[]
+        ).map((row) => ({
+          agentId: row.agent_id as string,
+          agentName: row.agent_name as string,
+          ticketCode: row.ticket_code as string,
+          ticketTitle: row.ticket_title as string,
+          totalSeconds: Number(row.total_seconds),
+        }))
+
   // Tiempo promedio de resolución
   const resueltos = tickets.filter((t) => t.closedAt)
   const avg =
@@ -358,10 +714,31 @@ export async function getReports(viewer: PublicUser): Promise<ReportData> {
     abiertos: tickets.filter((t) => t.status !== "cerrado" && t.status !== "resuelto").length,
     sinAsignar: tickets.filter((t) => !t.assigneeId && t.status !== "cerrado").length,
     resueltosUltimos7,
-    porEstado: count(STATUSES, (t) => t.status, STATUS_LABEL),
-    porPrioridad: count(PRIORITIES, (t) => t.priority, PRIORITY_LABEL),
-    porCanal: count(CHANNELS, (t) => t.channel, CHANNEL_LABEL),
+    porEstado: count(
+      STATUSES,
+      (t) => t.status,
+      Object.fromEntries(STATUSES.map((status) => [status, catalogLabels[`status:${status}`] ?? status])) as Record<Status, string>,
+    ),
+    porPrioridad: count(
+      PRIORITIES,
+      (t) => t.priority,
+      Object.fromEntries(PRIORITIES.map((priority) => [priority, catalogLabels[`priority:${priority}`] ?? priority])) as Record<Priority, string>,
+    ),
+    porCanal: channels.map((channel) => ({
+      key: channel.value as Channel,
+      label: channel.label,
+      value: tickets.filter((ticket) => ticket.channel === channel.value).length,
+    })).concat(
+      CHANNELS.filter((channel) => !channels.some((entry) => entry.value === channel))
+        .filter((channel) => tickets.some((ticket) => ticket.channel === channel))
+        .map((channel) => ({
+          key: channel,
+          label: catalogLabels[`channel:${channel}`] ?? channel,
+          value: tickets.filter((ticket) => ticket.channel === channel).length,
+        })),
+    ),
     porAgente,
+    tiempoPorAgenteTarea,
     tendencia,
     tiempoPromedioResolucionHoras: avg ? Math.round(avg * 10) / 10 : null,
   }

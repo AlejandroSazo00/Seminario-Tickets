@@ -20,7 +20,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const comment = await addComment(auth.user, id, body.body, Boolean(body.internal))
     return json({ comment }, 201)
-  } catch {
-    return error("Ticket no encontrado", 404)
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Error"
+    if (message === "NOT_FOUND") return error("Ticket no encontrado", 404)
+    if (message === "FORBIDDEN") {
+      return error("Solo el administrador, el agente asignado o el solicitante pueden comentar este ticket", 403)
+    }
+    throw e
   }
 }

@@ -8,7 +8,7 @@ import { StatusPie, PriorityBars, TrendLine, ChannelBars } from "@/components/re
 
 export default async function ReportsPage() {
   const user = await requireUserOrRedirect()
-  if (user.role === "cliente") redirect("/panel")
+  if (user.role !== "admin") redirect("/panel")
 
   const r = await getReports(user)
 
@@ -76,6 +76,48 @@ export default async function ReportsPage() {
           )}
         </Card>
       </div>
+
+      {user.role === "admin" && (
+        <Card className="p-6">
+          <h3 className="mb-4 font-semibold">Tiempo por agente y tarea</h3>
+          {r.tiempoPorAgenteTarea.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No hay tiempo registrado por agente todavía.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[36rem] text-left text-sm">
+                <thead>
+                  <tr className="border-b text-muted-foreground">
+                    <th className="pb-2 pr-4 font-medium">Agente</th>
+                    <th className="pb-2 pr-4 font-medium">Ticket</th>
+                    <th className="pb-2 text-right font-medium">Tiempo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.tiempoPorAgenteTarea.map((item) => (
+                    <tr key={`${item.agentId}-${item.ticketCode}`} className="border-b last:border-0">
+                      <td className="py-3 pr-4 font-medium">{item.agentName}</td>
+                      <td className="py-3 pr-4">
+                        <span className="font-mono text-xs text-muted-foreground">{item.ticketCode}</span>
+                        <span className="ml-2">{item.ticketTitle}</span>
+                      </td>
+                      <td className="py-3 text-right font-mono">{formatDuration(item.totalSeconds)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   )
+}
+
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const remainder = seconds % 60
+  return [hours, minutes, remainder].map((part) => String(part).padStart(2, "0")).join(":")
 }

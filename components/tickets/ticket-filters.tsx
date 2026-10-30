@@ -4,16 +4,20 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
 import { Search } from "lucide-react"
 import { Select } from "@/components/ui/field"
-import {
-  STATUSES,
-  PRIORITIES,
-  CHANNELS,
-  STATUS_LABEL,
-  PRIORITY_LABEL,
-  CHANNEL_LABEL,
-} from "@/lib/types"
+import { type Status, type Priority } from "@/lib/types"
+import type { CatalogEntry } from "@/lib/services/catalogs"
 
-export function TicketFilters({ canManage }: { canManage: boolean }) {
+export function TicketFilters({
+  canManage,
+  statuses,
+  priorities,
+  channels,
+}: {
+  canManage: boolean
+  statuses: CatalogEntry[]
+  priorities: CatalogEntry[]
+  channels: CatalogEntry[]
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
@@ -52,9 +56,9 @@ export function TicketFilters({ canManage }: { canManage: boolean }) {
         className="w-auto"
       >
         <option value="todos">Todos los estados</option>
-        {STATUSES.map((s) => (
-          <option key={s} value={s}>
-            {STATUS_LABEL[s]}
+        {statuses.map((status) => (
+          <option key={status.value} value={status.value as Status}>
+            {status.label}
           </option>
         ))}
       </Select>
@@ -65,9 +69,9 @@ export function TicketFilters({ canManage }: { canManage: boolean }) {
         className="w-auto"
       >
         <option value="todas">Todas las prioridades</option>
-        {PRIORITIES.map((p) => (
-          <option key={p} value={p}>
-            {PRIORITY_LABEL[p]}
+        {priorities.map((priority) => (
+          <option key={priority.value} value={priority.value as Priority}>
+            {priority.label}
           </option>
         ))}
       </Select>
@@ -79,9 +83,9 @@ export function TicketFilters({ canManage }: { canManage: boolean }) {
           className="w-auto"
         >
           <option value="todos">Todos los canales</option>
-          {CHANNELS.map((c) => (
-            <option key={c} value={c}>
-              {CHANNEL_LABEL[c]}
+          {channels.map((channel) => (
+            <option key={channel.value} value={channel.value}>
+              {channel.label}
             </option>
           ))}
         </Select>

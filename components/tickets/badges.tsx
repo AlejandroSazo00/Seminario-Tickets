@@ -35,22 +35,40 @@ const PRIORITY_STYLE: Record<Priority, string> = {
   urgente: "bg-red-500/15 text-red-700 dark:text-red-300",
 }
 
-export function StatusBadge({ status, className }: { status: Status; className?: string }) {
+export function StatusBadge({
+  status,
+  label,
+  className,
+}: {
+  status: Status
+  label?: string
+  className?: string
+}) {
   return (
     <span className={cn(base, STATUS_STYLE[status], className)}>
       <span className={cn("size-1.5 rounded-full", STATUS_DOT[status])} />
-      {STATUS_LABEL[status]}
+      {label ?? STATUS_LABEL[status]}
     </span>
   )
 }
 
-export function PriorityBadge({ priority, className }: { priority: Priority; className?: string }) {
-  return <span className={cn(base, PRIORITY_STYLE[priority], className)}>{PRIORITY_LABEL[priority]}</span>
+export function PriorityBadge({
+  priority,
+  label,
+  className,
+}: {
+  priority: Priority
+  label?: string
+  className?: string
+}) {
+  return <span className={cn(base, PRIORITY_STYLE[priority], className)}>{label ?? PRIORITY_LABEL[priority]}</span>
 }
 
-export function ChannelBadge({ channel, className }: { channel: Channel; className?: string }) {
+export function ChannelBadge({ channel, label, className }: { channel: Channel; label?: string; className?: string }) {
   return (
-    <span className={cn(base, "bg-muted text-muted-foreground", className)}>{CHANNEL_LABEL[channel]}</span>
+    <span className={cn(base, "bg-muted text-muted-foreground", className)}>
+      {label ?? CHANNEL_LABEL[channel as keyof typeof CHANNEL_LABEL] ?? channel}
+    </span>
   )
 }
 
